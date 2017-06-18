@@ -77,9 +77,9 @@ instance ArgRead a => Option (Flag _a _b _c _d a) where
     type Value (Flag _a _b _c _d a) = Unwrap a
     get = unwrap . getFlag
 
-instance Option (Arg _a a) where
-    type Value (Arg _a a) = a
-    get = getArg
+instance ArgRead a => Option (Arg _a a) where
+    type Value (Arg _a a) = Unwrap a
+    get = unwrap . getArg
 
 -- | Command line option's annotated types
 class ArgRead a where
@@ -100,6 +100,11 @@ class ArgRead a where
     -- | Indicate this argument is mandatory
     needArg :: Proxy a -> Bool
     needArg _ = True
+
+instance ArgRead (IO Handle) where
+    argRead Nothing = Nothing
+    argRead (Just "stdin") = Just $ return stdin
+    argRead (Just s) = Just $ openFile s ReadMode
 
 instance ArgRead Int
 
@@ -252,6 +257,28 @@ instance ( KnownSymbol placeholder, IsCmd c )
                     Just arg ->
                         runCmd (f $ Arg arg) name mbver options rest unrecognized
 
+instance ( KnownSymbol placeholder
+         , KnownSymbol defaultvalue
+         , IsCmd c
+         , ArgRead a )
+         => IsCmd (Arg placeholder (Def defaultvalue a) -> c) where
+    getUsageHeader f prog =
+        " [" ++ symbolVal (Proxy :: Proxy placeholder) ++
+        "=" ++ symbolVal (Proxy :: Proxy defaultvalue) ++
+         "]" ++ getUsageHeader (f undefined) prog
+
+    runCmd f name mbver options nonOptions unrecognized =
+        case nonOptions of
+        -- errorExit name "not enough arguments"
+            [] -> let Just arg = argRead Nothing
+                  in runCmd (f $ Arg arg) name mbver options [] unrecognized
+            (opt: rest) ->
+                case argRead (Just opt) of
+                    Nothing ->
+                        errorExit name $ "bad argument: " ++ opt
+                    Just arg ->
+                        runCmd (f $ Arg arg) name mbver options rest unrecognized
+
 instance ( KnownSymbol placeholder, IsCmd c )
          => IsCmd (Arg placeholder [String] -> c) where
     getUsageHeader f prog =
@@ -316,7 +343,7 @@ run' :: IsCmd c => c -> [String] -> Maybe String -> [String] -> IO ()
 run' cmd name mbver args = do
     let optDescr =
             getOptDescr cmd
-            ++ [ Option "?" ["help"]    (NoArg ("help",    "t")) "display this help and exit" ]
+            ++ [ Option "h" ["help"]    (NoArg ("help",    "t")) "display this help and exit" ]
             ++ [ Option "V" ["version"] (NoArg ("version", "t")) "output version information and exit"
                | isJust mbver ]
             ++ [ Option "v" ["verbose"] (OptArg (\arg -> ("verbose", fromMaybe "" arg)) "n") "set verbosity level" ]
