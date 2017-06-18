@@ -138,6 +138,15 @@ instance (KnownSymbol defaultValue, ArgRead a) => ArgRead (Def defaultValue a) w
         let s' = fromMaybe (symbolVal (Proxy :: Proxy defaultValue)) s
         in Def <$> argRead (Just s')
 
+newtype Req a = Req { getReq :: a }
+
+instance ArgRead a => ArgRead (Req a) where
+    type Unwrap (Req a) = Unwrap a
+    unwrap = unwrap . getReq
+
+    argRead Nothing = Nothing
+    argRead (Just s) = Req <$> argRead (Just s)
+
 -- | Command
 newtype Cmd (help :: Symbol) a =
     Cmd { unCmd :: ReaderT Int IO a }
@@ -244,6 +253,21 @@ instance ( KnownSymbol shortNames
 
 instance ( KnownSymbol placeholder, IsCmd c )
          => IsCmd (Arg placeholder String -> c) where
+    getUsageHeader f prog =
+        " " ++ symbolVal (Proxy :: Proxy placeholder) ++ getUsageHeader (f undefined) prog
+
+    runCmd f name mbver options nonOptions unrecognized =
+        case nonOptions of
+            [] -> errorExit name "not enough arguments"
+            (opt: rest) ->
+                case argRead (Just opt) of
+                    Nothing ->
+                        errorExit name $ "bad argument: " ++ opt
+                    Just arg ->
+                        runCmd (f $ Arg arg) name mbver options rest unrecognized
+
+instance ( KnownSymbol placeholder, IsCmd c, ArgRead a )
+         => IsCmd (Arg placeholder (Req a) -> c) where
     getUsageHeader f prog =
         " " ++ symbolVal (Proxy :: Proxy placeholder) ++ getUsageHeader (f undefined) prog
 
