@@ -28,6 +28,7 @@ module Options.Declarative (
     Option(..),
     Flag,
     Arg,
+    Req,
 
     -- * Defining argment types
     ArgRead(..),
