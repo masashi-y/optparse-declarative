@@ -397,15 +397,16 @@ run' cmd name mbver args = do
                   runCmd cmd name mbver options nonOptions unrecognized
 
 -- | Run a command with specifying program name and version
-run :: IsCmd c => String -> Maybe String -> c -> IO ()
-run progName progVer cmd =
-    run' cmd [progName] progVer =<< getArgs
+run :: IsCmd c => String -> [String] -> Maybe String -> c -> IO ()
+run progName args progVer cmd =
+    run' cmd [progName] progVer args
 
 -- | Run a command
 run_ :: IsCmd c => c -> IO ()
 run_ cmd = do
+    args <- getArgs
     progName <- getProgName
-    run progName Nothing cmd
+    run progName args Nothing cmd
 
 errorExit :: [String] -> String -> IO ()
 errorExit name msg = do
